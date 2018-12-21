@@ -6,6 +6,7 @@
 package com.blp.kpicalculation;
 
 import com.google.cloud.bigtable.hbase.BigtableConfiguration;
+import java.math.BigDecimal;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
@@ -18,6 +19,7 @@ import org.apache.hadoop.hbase.client.Result;
 import org.apache.hadoop.hbase.client.ResultScanner;
 import org.apache.hadoop.hbase.client.Scan;
 import org.apache.hadoop.hbase.client.Table;
+import org.apache.hadoop.hbase.shaded.org.codehaus.jackson.map.ObjectMapper;
 import org.apache.hadoop.hbase.util.Bytes;
 
 /**
@@ -110,7 +112,7 @@ public class KPICalculation {
     {
         try{
             SimpleDateFormat formatter = new SimpleDateFormat("yyyy-mm-dd HH:mm:ss"); 
-                
+            
             Date date=formatter.parse(dateInString.replace("T" ," ").replace("Z",""));
             System.out.println(date.getTime());
            
@@ -125,6 +127,189 @@ public class KPICalculation {
     }
     
     public static void main(String args[]){
-        new KPICalculation().genericFunctionForKPI("2017-03-13T10:00:00Z", "2017-03-13T10:10:00Z", "-1", "ActivePower", "tag");
+        //new KPICalculation().genericFunctionForKPI("2017-03-13T10:00:00Z", "2017-03-13T10:10:00Z", "-1", "ActivePower", "tag");
+        new KPICalculation().generationKPI("2017-03-13T10:00:00Z", "2017-03-13T10:10:00Z");
+    }
+    
+    public String generationKPI(String startDateInString,String endDateInString){
+        try{
+            byte[] COLUMN_FAMILY_NAME = Bytes.toBytes("tag");
+            byte[] COLUMN_NAME = Bytes.toBytes("TotalProduction_Raw");
+            
+            long startDate= KPICalculation.convertDate(startDateInString);
+            long endDate=KPICalculation.convertDate(endDateInString);
+            
+            
+            String result=null;
+            
+            try (Connection connection = BigtableConfiguration.connect(projectId, instanceId)) {
+                String rowKey = Long.toString(Long.MAX_VALUE-endDate);
+                String stopValue=Long.toString(Long.MAX_VALUE-startDate);
+
+                Scan scan = new Scan().withStartRow(Bytes.toBytes(rowKey),true).withStopRow(Bytes.toBytes(stopValue),true);
+                
+                //Scan scan = new Scan();
+                
+                Table table = connection.getTable(TableName.valueOf(tableId));
+                
+                ResultScanner scanner = table.getScanner(scan);
+                
+                boolean isColumnExists=false;
+                
+                for (Result row : scanner) {
+                    byte[] valueBytes = row.getValue(COLUMN_FAMILY_NAME, COLUMN_NAME);
+                    if(valueBytes != null){
+                        isColumnExists=true;
+                        //System.out.println("value:"+Bytes.toString(valueBytes));
+                    }
+                }
+                if(isColumnExists){
+                    result=new KPICalculation().processScanedData("TotalProduction_Raw", table.getScanner(scan));
+                    return result;
+                }
+                else{
+                    for (Result row : table.getScanner(scan)) {
+                        byte[] valueBytes = row.getValue(COLUMN_FAMILY_NAME, Bytes.toBytes("TotalProduction"));
+                        if(valueBytes != null){
+                            isColumnExists=true;
+                            //System.out.println("value:"+Bytes.toString(valueBytes));
+                        }
+                    }
+                }
+                
+                if(isColumnExists){
+                    result=new KPICalculation().processScanedData("TotalProduction", table.getScanner(scan));
+                    return result;
+                }
+                else{
+                    result=new KPICalculation().processScanedData("ActivePower", table.getScanner(scan));
+                    return result;
+                }
+                
+                
+            }
+            catch(Exception e)
+            {
+                e.printStackTrace();
+            }
+            return null;
+        }
+        catch(Exception e){
+            e.printStackTrace();
+            return null;
+        }
+    }
+    
+    public String processScanedData(String eventsData,ResultScanner resultScanner){
+        try{
+            Map<String, List<Double>> segList = new HashMap<String, List<Double>>();
+            
+            for (Result row : resultScanner) {
+                byte[] valueBytes = row.getValue(Bytes.toBytes("tag"), Bytes.toBytes(eventsData));
+                if(valueBytes != null){
+                    if(segList.get(Bytes.toString(row.getRow()).split("#")[1]) != null){
+                        //System.out.println("Seg List Inner Loop:"+segList.get(Bytes.toString(row.getRow()).split("#")[1]));
+                        List<Double> valueList= segList.get(Bytes.toString(row.getRow()).split("#")[1]);
+                        valueList.add(Double.valueOf(Bytes.toString(valueBytes)));
+                        segList.put(Bytes.toString(row.getRow()).split("#")[1],valueList);
+                    }
+                    else{
+                        List<Double> valueList=new ArrayList<>();
+                        valueList.add(Double.valueOf(Bytes.toString(valueBytes)));
+                        segList.put(Bytes.toString(row.getRow()).split("#")[1],valueList);
+                    }
+                }
+            }
+            
+            ArrayList<HashMap<String,String>> listOfResults=new ArrayList<>();
+
+            for(Map.Entry<String,List<Double>> entry : segList.entrySet()){
+
+                HashMap<String,String> resultMap=new HashMap<>();
+
+                double summationValue=KPICalculation.sum(entry.getValue());
+                double averageSum=summationValue/entry.getValue().size();
+
+                resultMap.put("assetId",entry.getKey());
+                resultMap.put("averageValue",Double.toString(averageSum));
+                resultMap.put("tagName",eventsData);              
+
+                listOfResults.add(resultMap);
+            }
+
+            System.out.println(listOfResults);
+            
+            return new ObjectMapper().writeValueAsString(listOfResults);
+        }
+        catch(Exception e){
+            e.printStackTrace();
+            return null;
+        }
+    }
+    
+    public String checkForColumnExists(String startDateInString,String endDateInString,String eventsTag){
+        try{
+            
+            byte[] COLUMN_FAMILY_NAME = Bytes.toBytes("tag");
+            byte[] COLUMN_NAME = Bytes.toBytes(eventsTag);
+            
+            long startDate= KPICalculation.convertDate(startDateInString);
+            long endDate=KPICalculation.convertDate(endDateInString);
+            
+            try (Connection connection = BigtableConfiguration.connect(projectId, instanceId)) {
+                
+                String rowKey = Long.toString(Long.MAX_VALUE-endDate);
+                String stopValue=Long.toString(Long.MAX_VALUE-startDate);
+
+                Scan scan = new Scan().withStartRow(Bytes.toBytes(rowKey),true).withStopRow(Bytes.toBytes(stopValue),true);
+                
+                //Scan scan = new Scan();
+                
+                Table table = connection.getTable(TableName.valueOf(tableId));
+                
+                ResultScanner scanner = table.getScanner(scan);
+                
+                boolean isColumnExists=false;
+                
+                Map<String, List<Double>> segList = new HashMap<String, List<Double>>();
+                
+                
+                for (Result row : scanner) {
+                   
+                    byte[] valueBytes = row.getValue(COLUMN_FAMILY_NAME, COLUMN_NAME);
+                    if(valueBytes != null){
+                        isColumnExists=true;
+                        if(segList.get(Bytes.toString(row.getRow()).split("#")[1]) != null){
+                            //System.out.println("Seg List Inner Loop:"+segList.get(Bytes.toString(row.getRow()).split("#")[1]));
+                            List<Double> valueList= segList.get(Bytes.toString(row.getRow()).split("#")[1]);
+                            valueList.add(Double.valueOf(Bytes.toString(valueBytes)));
+                            segList.put(Bytes.toString(row.getRow()).split("#")[1],valueList);
+                        }
+                        else{
+                            List<Double> valueList=new ArrayList<>();
+                            valueList.add(Double.valueOf(Bytes.toString(valueBytes)));
+                            segList.put(Bytes.toString(row.getRow()).split("#")[1],valueList);
+                        }
+                    }
+                    
+                }
+                
+                connection.close();
+                /*if(isColumnExists){
+                    
+                }
+                else{
+                    
+                }*/
+            }
+            catch(Exception e)
+            {
+                e.printStackTrace();
+            }
+            return null;
+        }
+        catch(Exception e){
+            return null;
+        }
     }
 }
