@@ -19,7 +19,7 @@ import org.apache.commons.pool.impl.GenericObjectPool;
 
 /**
  *
- * @author Hemanth
+ * @author Sivakumar
  */
 public class DBConnection {
     

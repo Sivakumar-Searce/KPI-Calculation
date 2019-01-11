@@ -6,6 +6,7 @@
 package com.blp.kpicalculation;
 
 import com.blp.dbconnection.DBConnection;
+import com.blp.ingesttenminagg.InsertTenMinuteAggregate;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -23,14 +24,14 @@ import org.apache.hadoop.hbase.util.Bytes;
 
 /**
  *
- * @author Hemanth
+ * @author Sivakumar
  */
 public class GenericCalculation {
     
     public ArrayList<HashMap<String,String>> processScanedData(String eventsData,ResultScanner resultScanner,long startDate,long endDate){
         try{
             Map<String, List<Double>> segList = new HashMap<String, List<Double>>();
-            int i=0;
+            HashMap<String,String> assetSiteIdMap=new HashMap<>();
             for (Result row : resultScanner) {
                 byte[] valueBytes = row.getValue(Bytes.toBytes("tag"), Bytes.toBytes(eventsData));
                 if(valueBytes != null){
@@ -39,20 +40,19 @@ public class GenericCalculation {
                         List<Double> valueList= segList.get(Bytes.toString(row.getRow()).split("#")[1]);
                         valueList.add(Double.valueOf(Bytes.toString(valueBytes)));
                         segList.put(Bytes.toString(row.getRow()).split("#")[1],valueList);
-                        i++;
+                        assetSiteIdMap.put(Bytes.toString(row.getRow()).split("#")[1],Bytes.toString(row.getRow()).split("#")[2]);
                     }
                     else{
                         List<Double> valueList=new ArrayList<>();
                         valueList.add(Double.valueOf(Bytes.toString(valueBytes)));
                         segList.put(Bytes.toString(row.getRow()).split("#")[1],valueList);
-                        i++;
+                        assetSiteIdMap.put(Bytes.toString(row.getRow()).split("#")[1],Bytes.toString(row.getRow()).split("#")[2]);
                     }
                 }
             }
             
             
-            System.out.println("Total No. of BigTable rows scanned:"+i);
-            System.out.println("");
+           
             
             ArrayList<HashMap<String,String>> listOfResults=new ArrayList<>();
             
@@ -64,6 +64,7 @@ public class GenericCalculation {
                 double averageSum=summationValue/entry.getValue().size();
 
                 resultMap.put("assetId",entry.getKey());
+                resultMap.put("siteId",assetSiteIdMap.get(entry.getKey()));
                 resultMap.put("averageValue",Double.toString(averageSum));
                 resultMap.put("tagName",eventsData);   
                 resultMap.put("tagCounts",Integer.toString(entry.getValue().size()));
@@ -74,11 +75,11 @@ public class GenericCalculation {
             }
             
             
-            System.out.println("Size of Result grouped by asset id:"+listOfResults.size());
-            System.out.println("");
-            System.out.println(listOfResults);
-            System.out.println("");
-            
+//            System.out.println("Size of Result grouped by asset id:"+listOfResults.size());
+//            System.out.println("");
+//            System.out.println(listOfResults);
+//            System.out.println("");
+//            
             return listOfResults;
         }
         catch(Exception e){
@@ -167,20 +168,17 @@ public class GenericCalculation {
                 rsObj = statement.executeQuery("SELECT ACTIVEPOWER FROM masterpowercurve where SITEID='"+hmap.get("siteId")+"' and WINDSPEED='"+avgValue+"'");
                 //rsObj = statement.executeQuery("SELECT ACTIVEPOWER FROM masterpowercurve where SITEID='AMB' and WINDSPEED='24.9'");
                 //System.out.println(rsObj);
-                ResultSetMetaData rsmd = rsObj.getMetaData();
-                //System.out.println(rsObj.getRow());
-                int columnsNumber = rsmd.getColumnCount();
-                //System.out.println(columnsNumber);
+                
                 while (rsObj.next()) {
-                    for (int i = 1    ; i <= columnsNumber; i++) {
-                        if (i > 1) System.out.print(",  ");
-                        String columnValue = rsObj.getString(i);
-                        System.out.print(hmap.get("siteId")+" : "+rsmd.getColumnName(i)+" : "+columnValue);
+                    if(rsObj.getObject("ACTIVEPOWER") != null){
+                        hmap.put("activePower",Double.toString((Double)rsObj.getObject("ACTIVEPOWER")));
                     }
-                    System.out.println("");
                 }
                 
             }
+            
+            System.out.println(listOfMap);
+            
             return null;
         }
         catch(Exception e){
@@ -207,5 +205,73 @@ public class GenericCalculation {
                 jdbcObj.printDbStatus();
             }
     }
-    
+    public ArrayList<HashMap<String,String>> fetchTenMinuteAggregatedData(String dateRange,String tagName){
+        ResultSet rsObj = null;
+        Connection
+        connObj = null;
+        PreparedStatement pstmtObj = null;
+        DBConnection jdbcObj = new DBConnection();
+        
+        ArrayList<HashMap<String,String>> mapList=new ArrayList<>();
+        
+        try{
+            DataSource dataSource = jdbcObj.setUpPool();
+            connObj = dataSource.getConnection();
+            
+            Statement statement = connObj.createStatement();
+            rsObj = statement.executeQuery("select site_id,asset_id,tag_name,sum(agg_value) as agg_value,max(agg_value) as max_agg_value,min(agg_value) as min_agg_value from ten_min_agg where Date(from_ts)='"+dateRange+"' and tag_name='"+tagName+"' group by asset_id");
+
+
+            while (rsObj.next()) {
+                
+                String site_id=(String)rsObj.getObject("site_id");
+                String assetId=(String)rsObj.getObject("asset_id");
+                String tag_name=(String)rsObj.getObject("tag_name");
+                String dateInString=dateRange;
+                double avgValue=(Double)rsObj.getObject("agg_value");
+                double maxValue=(Double)rsObj.getObject("max_agg_value");
+                double minValue=(Double)rsObj.getObject("min_agg_value");
+                
+                HashMap<String,String> hashMap=new HashMap<String,String>();
+                
+                hashMap.put("siteId",site_id);
+                hashMap.put("assetId", assetId);
+                hashMap.put("tagName", tag_name);
+                hashMap.put("dateInString", dateInString);
+                hashMap.put("aggValue", Double.toString(avgValue));
+                hashMap.put("max_value", Double.toString(maxValue));
+                hashMap.put("min_value", Double.toString(minValue));
+                
+                mapList.add(hashMap);
+            }
+            
+            System.out.println(mapList);
+            
+            
+            new InsertTenMinuteAggregate().insertDailyAggregate(mapList);
+            
+            return null;
+        }
+        catch(Exception e){
+            e.printStackTrace();
+            return null;
+        }
+        finally {
+                try {
+                        // Closing ResultSet Object
+                        if(rsObj != null) {
+                                rsObj.close();
+                        }
+                        // Closing PreparedStatement Object
+                        
+                        // Closing Connection Object
+                        if(connObj != null) {
+                                connObj.close();
+                        }
+                } catch(Exception sqlException) {
+                        sqlException.printStackTrace();
+                }
+                jdbcObj.printDbStatus();
+            }
+    }
 }
