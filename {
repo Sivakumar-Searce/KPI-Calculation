@@ -1,0 +1,24 @@
+{
+   "data": [{
+      "asset": {
+         "siteId": "SACU",
+         "assetId": "SACU_WT01",
+         "timezone": "/Asia/Kolkata",
+         "modelName": "S82-1.5MW",
+         "assetType": "turbine",
+         "groupID": "0100_SUT_M164",
+         "genTimestamp": "2019-01-29T10:35:23Z"
+      },
+      "tags": [{
+         "ActivePower": [{
+            "timestamp": "2019-01-29T10:35:20.0250091Z",
+            "value": 360.0,
+            "status": true,
+            "recTimestamp": "2019-01-29T10:35:21Z"
+         }]
+      }]
+   }]
+}
+
+
+mvn compile exec:java -Dexec.mainClass=com.blp.ingestion.Main  -Dexec.args="--project=platform-dev-blp --stagingLocation=gs://blp-dataflow-testing/staging/ --outputDirectory=gs://blp-dataflow-testing/solar-data-new/ --inputTopic=projects/platform-dev-blp/topics/solar-ingest  --tempLocation=gs://blp-dataflow-testing/temp/ --runner=DataFlow"

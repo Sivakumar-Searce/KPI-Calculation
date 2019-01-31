@@ -1,0 +1,32 @@
+{
+	"Gamesa": {
+		"active_count": "2",
+		"fault_value": "20Kw",
+		"comparision": "normal"
+	},
+	"Micon NM 52": {
+		"active_count": "1",
+		"fault_value": "5Kw",
+		"comparision": "min"
+	},
+	"n90-2.3mw": {
+		"active_count": "2",
+		"fault_value": "20Kw",
+		"comparision": "normal"
+	},
+	"mm70-2mw": {
+		"active_count": "1",
+		"fault_value": "5Kw",
+		"comparision": "min"
+	},
+	"v90_3mw": {
+		"active_count": "1",
+		"fault_value": "5Kw",
+		"comparision": "min"
+	},
+	"e40-600kw":{
+		"active_count": "1",
+		"fault_value": "5Kw",
+		"comparision": "normal"
+	}
+}

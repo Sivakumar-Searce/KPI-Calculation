@@ -8,6 +8,7 @@ package com.blp.kpicalculation;
 import com.blp.ingesttenminagg.InsertTenMinuteAggregate;
 import com.google.cloud.bigtable.hbase.BigtableConfiguration;
 import java.text.DecimalFormat;
+import java.text.SimpleDateFormat;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
@@ -32,8 +33,8 @@ public class KPICalculation {
 
     public static String projectId = "platform-dev-blp";  // my-gcp-project-id
     public static String instanceId = "blp-dev-bt"; // my-bigtable-instance-id
-    public static String tableId = "validate";
-    
+    public static String tableId = "sok_data_test";
+    //public static String tableId = "validate_amb"; //for KPI Calculation
     /*
     This is test Function for testing purpose
     */
@@ -135,9 +136,9 @@ public class KPICalculation {
     
     public static void main(String args[]) {
 
-        DateTime startDate = new DateTime(2017, 03, 13, 9, 00, 00);
+        DateTime startDate = new DateTime(2017, 12, 02, 00, 00, 00);
 
-        DateTime endDate = new DateTime(2017, 03, 13, 9, 30, 00);
+        DateTime endDate = new DateTime(2017, 12, 05, 00, 00, 00);
 
         DecimalFormat df = new DecimalFormat("00");
         int count = 0;
@@ -166,43 +167,50 @@ public class KPICalculation {
             //System.out.println("Generation KPI");
             //new KPICalculation().generationKPI(tempDateInString, endDateInString);
             //System.out.println("Actual Productioin KPI");
-            //new KPICalculation().actualProductionKPICalculation(tempDateInString, endDateInString);
-            System.out.println("Potential Productioin KPI");
-            new KPICalculation().potentialProductionKPICalculation(tempDateInString, endDateInString);
+            new KPICalculation().actualProductionKPICalculation(tempDateInString, endDateInString);
+            //System.out.println("Potential Productioin KPI");
+            //new KPICalculation().potentialProductionKPICalculation(tempDateInString, endDateInString);
             //System.out.println("Wind Speed KPI");
             //new KPICalculation().windSpeedKPICalculation(tempDateInString, endDateInString);
 
             count++;
         }
         System.out.println("No. of Date range iterated:" + count);
+        
+        //new KPICalculation().generationKPI("2018-05-05T00:00:00");
     }
     
     /*
-    Calculates the 10 minute aggreagation for Genration KPI
+    Calculates the Daily Genration KPI
     */
 
-    public String generationKPI(String startDateInString, String endDateInString) {
+    public String generationKPI(String dateInString) {
         try {
             byte[] COLUMN_FAMILY_NAME = Bytes.toBytes("tag");
             byte[] COLUMN_NAME = Bytes.toBytes("TotalProduction_Raw");
 
             System.out.println("Data Proccesing Starts");
+            
+            LocalDateTime localDateTime = LocalDateTime.parse(dateInString);
 
-            System.out.println("Start Date: " + startDateInString);
-            long startDate = KPICalculation.convertDate(startDateInString);
-            System.out.println("End Date: " + endDateInString);
-            long endDate = KPICalculation.convertDate(endDateInString);
-//            long startDate=Long.parseLong("1489375800000");
-//            long endDate=Long.parseLong("1489376400000");
-
+            Date startDate = Date.from(localDateTime.atZone(ZoneId.of("UTC")).toInstant());
+            
+            startDate.setHours(00);
+            startDate.setMinutes(00);
+            //Adding 10 minute
+            Date endDate=new Date(startDate.getTime()+(10*60000));
+            
+            long startDateInSeconds = startDate.getTime();
+            long endDateInSeconds = endDate.getTime();
+            
+            System.out.println(startDate+":"+endDate);
+            
             ArrayList<HashMap<String, String>> resultListMap = new ArrayList<HashMap<String, String>>();
 
             try (Connection connection = BigtableConfiguration.connect(projectId, instanceId)) {
-//                String rowKey = Long.toString(Long.MAX_VALUE-endDate);
-//                String stopValue=Long.toString(Long.MAX_VALUE-startDate);
 
-                String rowKey = Long.toString(startDate);
-                String stopValue = Long.toString(endDate);
+                String rowKey = Long.toString(startDateInSeconds);
+                String stopValue = Long.toString(endDateInSeconds);
 
                 Scan scan = new Scan().withStartRow(Bytes.toBytes(rowKey), true).withStopRow(Bytes.toBytes(stopValue), true);
 
@@ -221,11 +229,67 @@ public class KPICalculation {
                     }
                 }
                 if (isColumnExists) {
-                    resultListMap = new GenericCalculation().processScanedData("TotalProduction_Raw", table.getScanner(scan), startDate, endDate);
-                    new InsertTenMinuteAggregate().insertTenMinuteAggregate(resultListMap);
-                    System.out.println("");
-                    return "success";
-                } else {
+                    
+                    System.out.println("TotalProduction_Raw");
+                    Date startlastTenMinuteDate=startDate;
+                    
+                    startlastTenMinuteDate.setHours(23);
+                    startlastTenMinuteDate.setMinutes(50);
+                    
+                    Date endlastTenMinuteDate=new Date(startlastTenMinuteDate.getTime()+(10*60000));
+                    
+                    long startTenMinuteInSeconds= startlastTenMinuteDate.getTime()/1000;
+                    long endTenMinuteInSeconds= endlastTenMinuteDate.getTime()/1000;
+                    
+                    String startTenMinuterowKey = Long.toString(startTenMinuteInSeconds);
+                    String endTenMinuterowKey = Long.toString(endTenMinuteInSeconds);
+
+                    System.out.println(startlastTenMinuteDate+":"+endlastTenMinuteDate);
+                    
+                    Scan scanLastTenMinute = new Scan().withStartRow(Bytes.toBytes(startTenMinuterowKey), true).withStopRow(Bytes.toBytes(endTenMinuterowKey), true);
+                    
+                    ResultScanner scannerLastTenMinute = table.getScanner(scanLastTenMinute);
+                    
+                    boolean isLastTenMinute=false;
+                    for (Result row : scannerLastTenMinute) {
+                        byte[] valueBytes = row.getValue(COLUMN_FAMILY_NAME, COLUMN_NAME);
+                        if (valueBytes != null) {
+                            isLastTenMinute = true;
+                            //System.out.println("value:"+Bytes.toString(valueBytes));
+                        }
+                    }
+                    
+                    if(isLastTenMinute){
+                        ArrayList<HashMap<String,String>> minimumResultsList = new GenericCalculation().processScanedDataForGeneration("TotalProduction_Raw", table.getScanner(scan), startDateInSeconds, endDateInSeconds,"min");
+                        //new InsertTenMinuteAggregate().insertTenMinuteAggregate(resultListMap);
+
+                        ArrayList<HashMap<String,String>> maximumResultsList = new GenericCalculation().processScanedDataForGeneration("TotalProduction_Raw", table.getScanner(scanLastTenMinute), startTenMinuteInSeconds, endTenMinuteInSeconds,"max");
+                        //System.out.println("");
+                        for(HashMap<String,String> maxMap:maximumResultsList){
+                            for(HashMap<String,String> minMap:minimumResultsList){
+                                if(maxMap.get("assetId").equalsIgnoreCase(minMap.get("assetId"))){
+                                    HashMap<String,String> resultMap=new HashMap<>();
+                                    resultMap.put("assetId",maxMap.get("assetId"));
+                                    resultMap.put("siteId",maxMap.get("siteId"));
+                                    double generationValue=Double.parseDouble(maxMap.get("max"))-Double.parseDouble(minMap.get("min"));
+                                    resultMap.put("generationValue",Double.toString(generationValue));
+                                    SimpleDateFormat sdf=new SimpleDateFormat("yyyy-MM-dd");
+                                    resultMap.put("date",sdf.format(startDate));
+                                    resultListMap.add(resultMap);
+                                }
+                            }
+                        }
+
+                        System.out.println(resultListMap);
+                        new InsertTenMinuteAggregate().insertDailyGenerationAggregate(resultListMap);
+                        
+                        return "success";
+                    }
+                    else{
+                        isColumnExists=false;
+                    }
+                } 
+                if(!isColumnExists) {
                     for (Result row : table.getScanner(scan)) {
                         byte[] valueBytes = row.getValue(COLUMN_FAMILY_NAME, Bytes.toBytes("TotalProduction"));
                         if (valueBytes != null) {
@@ -236,19 +300,71 @@ public class KPICalculation {
                 }
 
                 if (isColumnExists) {
-                    resultListMap = new GenericCalculation().processScanedData("TotalProduction", table.getScanner(scan), startDate, endDate);
-                    System.out.println("");
-                    new InsertTenMinuteAggregate().insertTenMinuteAggregate(resultListMap);
-                    return "success";
-                } else {
-                    resultListMap = new GenericCalculation().processScanedData("ActivePower", table.getScanner(scan), startDate, endDate);
-                    for (HashMap<String, String> mapData : resultListMap) {
-                        double avg = Double.parseDouble(mapData.get("averageValue")) / 6;
-                        mapData.put("averageValue", Double.toString(avg));
+                    System.out.println("TotalProduction");
+                    Date startlastTenMinuteDate=startDate;
+                    
+                    startlastTenMinuteDate.setHours(23);
+                    startlastTenMinuteDate.setMinutes(50);
+                    
+                    Date endlastTenMinuteDate=new Date(startlastTenMinuteDate.getTime()+(10*60000));
+                    
+                    long startTenMinuteInSeconds= startlastTenMinuteDate.getTime()/1000;
+                    long endTenMinuteInSeconds= endlastTenMinuteDate.getTime()/1000;
+                    
+                    String startTenMinuterowKey = Long.toString(startTenMinuteInSeconds);
+                    String endTenMinuterowKey = Long.toString(endTenMinuteInSeconds);
+
+                    
+                    Scan scanLastTenMinute = new Scan().withStartRow(Bytes.toBytes(startTenMinuterowKey), true).withStopRow(Bytes.toBytes(endTenMinuterowKey), true);
+                    
+                    ResultScanner scannerLastTenMinute = table.getScanner(scanLastTenMinute);
+                    
+                    boolean isLastTenMinute=false;
+                    for (Result row : scannerLastTenMinute) {
+                        byte[] valueBytes = row.getValue(COLUMN_FAMILY_NAME, COLUMN_NAME);
+                        if (valueBytes != null) {
+                            isLastTenMinute = true;
+                            //System.out.println("value:"+Bytes.toString(valueBytes));
+                        }
                     }
-                    System.out.println("");
-                    System.out.println("Result list after diveded by Six:" + resultListMap);
-                    System.out.println("");
+                    
+                    if(isLastTenMinute){
+                    
+                        ArrayList<HashMap<String,String>> minimumResultsList = new GenericCalculation().processScanedDataForGeneration("TotalProduction", table.getScanner(scan), startDateInSeconds, endDateInSeconds,"min");
+                        //new InsertTenMinuteAggregate().insertTenMinuteAggregate(resultListMap);
+
+                        ArrayList<HashMap<String,String>> maximumResultsList = new GenericCalculation().processScanedDataForGeneration("TotalProduction", table.getScanner(scanLastTenMinute), startTenMinuteInSeconds, endTenMinuteInSeconds,"max");
+                        //System.out.println("");
+                        for(HashMap<String,String> maxMap:maximumResultsList){
+                            for(HashMap<String,String> minMap:minimumResultsList){
+                                if(maxMap.get("assetId").equalsIgnoreCase(minMap.get("assetId"))){
+                                    HashMap<String,String> resultMap=new HashMap<>();
+                                    resultMap.put("assetId",maxMap.get("assetId"));
+                                    resultMap.put("siteId",maxMap.get("siteId"));
+                                    double generationValue=Double.parseDouble(maxMap.get("max"))-Double.parseDouble(minMap.get("min"));
+                                    resultMap.put("generationValue",Double.toString(generationValue));
+                                    SimpleDateFormat sdf=new SimpleDateFormat("yyyy-MM-dd");
+                                    resultMap.put("date",sdf.format(startDate));
+                                    resultListMap.add(resultMap);
+                                }
+                            }
+                        }
+
+                        System.out.println(resultListMap);
+                        
+                        new InsertTenMinuteAggregate().insertDailyGenerationAggregate(resultListMap);
+                        
+                        return "success";
+                    }
+                    else{
+                        isColumnExists=false;
+                    }
+                } 
+                if(!isColumnExists){
+                    SimpleDateFormat sdf=new SimpleDateFormat("yyyy-MM-dd");
+                    System.out.println("ActivePower");
+                    resultListMap=new GenericCalculation().fetchTenMinuteGenerationAggregatedData(sdf.format(startDate), "ActivePower");
+                    System.out.println(resultListMap);
                     return "success";
                 }
 
@@ -292,10 +408,10 @@ public class KPICalculation {
 
                 resultListMap = new GenericCalculation().processScanedData("WindSpeed", table.getScanner(scan), startDate, endDate);
 
-                for (HashMap<String, String> mapData : resultListMap) {
+                /*for (HashMap<String, String> mapData : resultListMap) {
                     double avg = Double.parseDouble(mapData.get("averageValue")) / 6;
                     mapData.put("averageValue", Double.toString(avg));
-                }
+                }*/
 
                 new InsertTenMinuteAggregate().insertTenMinuteAggregate(resultListMap);
 
@@ -340,10 +456,17 @@ public class KPICalculation {
 
                 resultListMap = new GenericCalculation().processScanedData("ActivePower", table.getScanner(scan), startDate, endDate);
 
-                System.out.println("Re:" + resultListMap);
+                //System.out.println("Re:" + resultListMap);
+                
+                for (HashMap<String, String> mapData : resultListMap) {
+                        double avg = Double.parseDouble(mapData.get("averageValue")) / 6;
+                        mapData.put("averageValue", Double.toString(avg));
+                    }
 
                 new InsertTenMinuteAggregate().insertTenMinuteAggregate(resultListMap);
-
+                
+                System.out.println("Inserting Successfully");
+                
                 return "success";
 
             } catch (Exception e) {
@@ -367,7 +490,9 @@ public class KPICalculation {
             long endDate = KPICalculation.convertDate(endDateInString);
 
             ArrayList<HashMap<String, String>> resultListMap = new ArrayList<HashMap<String, String>>();
-
+            
+            ArrayList<HashMap<String, String>> finalresultListMap = new ArrayList<HashMap<String, String>>();
+            
             String result = null;
 
             try (Connection connection = BigtableConfiguration.connect(projectId, instanceId)) {
@@ -384,13 +509,12 @@ public class KPICalculation {
 
                 resultListMap = new GenericCalculation().processScanedDataBasedOnSiteId("WindSpeed", table.getScanner(scan), startDate, endDate);
 
-                for (HashMap<String, String> mapData : resultListMap) {
-                    double avg = Double.parseDouble(mapData.get("averageValue")) / 6;
-                    mapData.put("averageValue", Double.toString(avg));
-                }
-                System.out.println("Re:" + resultListMap);
+                //System.out.println("Re:" + resultListMap);
 
-                new GenericCalculation().fetchActivePower(resultListMap);
+                finalresultListMap=new GenericCalculation().fetchActivePower(resultListMap);
+                
+                System.out.println(finalresultListMap);
+                new InsertTenMinuteAggregate().insertTenMinuteAggregateForPotental(finalresultListMap);
 
                 return "success";
 
