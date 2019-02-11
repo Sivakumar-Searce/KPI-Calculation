@@ -13,7 +13,6 @@ import static com.blp.kpicalculation.KPICalculation.instanceId;
 import static com.blp.kpicalculation.KPICalculation.projectId;
 import static com.blp.kpicalculation.KPICalculation.tableId;
 import com.google.cloud.bigtable.hbase.BigtableConfiguration;
-import java.io.FileNotFoundException;
 import java.io.FileReader;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -25,7 +24,6 @@ import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -39,6 +37,8 @@ import org.apache.hadoop.hbase.client.Scan;
 import org.apache.hadoop.hbase.client.Table;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.joda.time.DateTime;
+import org.joda.time.format.DateTimeFormat;
+import org.joda.time.format.DateTimeFormatter;
 import org.json.simple.JSONObject;
 import org.json.simple.parser.JSONParser;
 
@@ -47,11 +47,11 @@ import org.json.simple.parser.JSONParser;
  * @author siva.kumar
  */
 public class Test {
-    public String genericFunctionForKPI(String startDateInString,String endDateInString){
+    public String sokCalculationKPI(String startDateInString,String endDateInString,String siteId){
         try{
             
             byte[] COLUMN_FAMILY_NAME = Bytes.toBytes("tag");
-            byte[] COLUMN_NAME = Bytes.toBytes("AC_Calc");
+            byte[] COLUMN_NAME = Bytes.toBytes("AlarmCode");
             
             System.out.println("Start Date: " + startDateInString);
             long startDate = KPICalculation.convertDate(startDateInString);
@@ -74,7 +74,7 @@ public class Test {
                 HashMap<String,String> assetSiteIdMap=new HashMap<>();
                 HashMap<String,String> assetIdassetTypeMap=new HashMap<>();
                 Map<String, List<HashMap<String,Long>>> afcMapList= new HashMap<>();
-                ArrayList<HashMap<String,String>> ffcMapList= new ArrayList<>();
+                Map<String, List<HashMap<String,Long>>> finalAfcMapList= new HashMap<>();
                 
                 System.out.println("Scanner Starts .........");
                 
@@ -82,7 +82,7 @@ public class Test {
                     byte[] valueBytes = row.getValue(COLUMN_FAMILY_NAME, COLUMN_NAME);
                     if(valueBytes != null){
                         if(segList.get(Bytes.toString(row.getRow()).split("#")[2]) != null){
-                            //System.out.println("Seg List Inner Loop:"+segList.get(Bytes.toString(row.getRow()).split("#")[1]));
+                            //System.out.println("Seg List Inner Loop:"+Bytes.toString(row.getRow()));
                             List<HashMap<String,Long>> valueList= segList.get(Bytes.toString(row.getRow()).split("#")[2]);
                             HashMap<String,Long> tempMap=new HashMap<String,Long>();
                             tempMap.put("timeStamp",Long.parseLong(Bytes.toString(row.getRow()).split("#")[0]));
@@ -106,17 +106,20 @@ public class Test {
                         }
                     }
                 }
-
-                //System.out.println(segList);
+                
+                //System.out.println("Asset Id Type: "+assetIdassetTypeMap);
+                //System.out.println(segList.size());
                 
                 for(Map.Entry<String,List<HashMap<String,Long>>> entry : segList.entrySet()){
                     
                     //new Test().sortTimeStamp(entry.getValue());
                     System.out.println("Asset Id:"+entry.getKey());
                     
-                    String moduleName=assetIdassetTypeMap.get(entry.getKey());
+                    String moduleName=new DBUtils().fetchModuleName(entry.getKey());
+                    assetIdassetTypeMap.put(entry.getKey(), moduleName);
                     
                     ArrayList<HashMap<String,String>> alarmCodeMapList=new DBUtils().fetchalarmcode(moduleName);
+                    System.out.println("alarmCodeMapList size: "+alarmCodeMapList.size());
                     
                     if(!alarmCodeMapList.isEmpty()){
                     
@@ -127,6 +130,7 @@ public class Test {
                                 int alarmDataFromSQl=Integer.parseInt(alarmCode.get("alarmCode"));
                                 if(alarmFromBT == alarmDataFromSQl){
                                     //System.out.println("Hereeeeeeee");
+                                    dataMap.put("alarmCode",(long)alarmFromBT);
                                     dataMap.put("faultState", Long.parseLong(alarmCode.get("faultState")));
                                 }
                             }
@@ -145,7 +149,7 @@ public class Test {
 
                         for(HashMap<String,Long> dataMap:entry.getValue()){
                             if(!dataMap.isEmpty()){
-                                System.out.println("DataMap:"+dataMap);
+                                //System.out.println("DataMap:"+dataMap);
                                 if(afcMapList.isEmpty()){
                                     List<HashMap<String,Long>> valueList=new ArrayList<>();
                                     valueList.add(dataMap);
@@ -163,8 +167,8 @@ public class Test {
                                     else{
                                         int size=valueList.size();
                                         afcMap=valueList.get(size-1);
-                                        long previousfaultCode=afcMap.get("faultState");
-                                        long curentfaultCode=dataMap.get("faultState");
+                                        long previousfaultCode=afcMap.get("alarmCode");
+                                        long curentfaultCode=dataMap.get("alarmCode");
                                         if((int)previousfaultCode != (int)curentfaultCode){
                                             valueList.add(dataMap);
                                             afcMapList.put(entry.getKey(),valueList);
@@ -175,41 +179,189 @@ public class Test {
                         }
                     }
                 }
-                
                 System.out.println("AFC List:  "+afcMapList);
+                System.out.println("AFC List size:  "+afcMapList.size());
                 
                 for(Map.Entry<String,List<HashMap<String,Long>>> entry : afcMapList.entrySet()){
-                    boolean flag=false;
+                    HashMap<String,Long> previousMap=new HashMap<>();
+                    HashMap<String,Long> nextMap=new HashMap<>();
+                    HashMap<String,Long> exceptionMap=new HashMap<>();
+                    ArrayList<Long> removalTime=new ArrayList<>();
                     for(HashMap<String,Long> dataMap:entry.getValue()){
-                        long faultCode=dataMap.get("faultState");
-                        if((int)faultCode == 2){
-                            flag=true;
-                            HashMap<String,String> tempMap=new HashMap<>();
-                            tempMap.put("startfaultState",Long.toString(faultCode));
-                            tempMap.put("startTimeStamp",Long.toString(dataMap.get("timeStamp")));
-                            tempMap.put("alarmCode", Long.toString(dataMap.get("alarmCode")));
-                            tempMap.put("assetId",entry.getKey());
-                            tempMap.put("siteId",assetSiteIdMap.get(entry.getKey()));
-                            tempMap.put("assetType",assetIdassetTypeMap.get(entry.getKey()));
-                            tempMap.put("flagState","two");
-                            ffcMapList.add(tempMap);
+                        if(dataMap.get("alarmCode") == 224){
+                            if(exceptionMap.isEmpty()){
+                                exceptionMap.put("faulstate",dataMap.get("faultState"));
+                                exceptionMap.put("alarmCode",dataMap.get("alarmCode"));
+                                exceptionMap.put("timeStamp", dataMap.get("timeStamp"));
+                            }
+                            else{
+                                nextMap.put("faulstate",dataMap.get("faultState"));
+                                nextMap.put("alarmCode",dataMap.get("alarmCode"));
+                                nextMap.put("timeStamp", dataMap.get("timeStamp"));
+                            }
                         }
-                        if((int)faultCode == 0){
-                            if(flag){
-                                for(HashMap<String,String> resultMap:ffcMapList){
-                                    if(resultMap.get("assetId").equalsIgnoreCase(entry.getKey()) && 
-                                            resultMap.get("flagState").equalsIgnoreCase("two")){
-                                        resultMap.put("endfaultState",Long.toString(faultCode));
-                                        resultMap.put("endTimeStamp",Long.toString(dataMap.get("timeStamp")));
-                                        resultMap.put("flagState","one");
+                        else if(dataMap.get("faultState") == 0){
+                            if(!exceptionMap.isEmpty()){
+                                //System.out.println("Here");
+                                exceptionMap.clear();
+                            }
+                        }
+                        else if(dataMap.get("faultState") == 3){
+                            if(previousMap.isEmpty() && exceptionMap.isEmpty()){
+                                previousMap.put("faulstate",dataMap.get("faultState"));
+                                previousMap.put("alarmCode",dataMap.get("alarmCode"));
+                                previousMap.put("timeStamp", dataMap.get("timeStamp"));
+                            }
+                            else if(!exceptionMap.isEmpty()){
+                                nextMap.put("faulstate",dataMap.get("faultState"));
+                                nextMap.put("alarmCode",dataMap.get("alarmCode"));
+                                nextMap.put("timeStamp", dataMap.get("timeStamp"));
+                            }
+                            else{
+                                previousMap.clear();
+                            }
+                        }
+                        else if(dataMap.get("faultState") == 2){
+                            if(!exceptionMap.isEmpty()){
+                                nextMap.put("faulstate",dataMap.get("faultState"));
+                                nextMap.put("alarmCode",dataMap.get("alarmCode"));
+                                nextMap.put("timeStamp", dataMap.get("timeStamp"));
+                            }
+                        }
+                        
+                        
+                        if(!exceptionMap.isEmpty() && !nextMap.isEmpty() && previousMap.isEmpty()){
+                            
+                            long startInMillis=exceptionMap.get("timeStamp")*1000;
+                            long endInMillis=nextMap.get("timeStamp")*1000;
+                            
+                            long diff=endInMillis-startInMillis;
+                            long diffInSeconds=diff / 1000;
+                            
+                            if(diffInSeconds < 5){
+                                removalTime.add(exceptionMap.get("timeStamp"));
+                            }
+                            else{
+                                removalTime.add(nextMap.get("timeStamp"));
+                            }
+                            
+                            exceptionMap.clear();
+                            nextMap.clear();
+                            
+                        }
+                        else if(!exceptionMap.isEmpty() && !nextMap.isEmpty() && !previousMap.isEmpty()){
+                            long previosMillis=previousMap.get("timeStamp")*1000;
+                            long exceptionMillis=exceptionMap.get("timeStamp")*1000;
+                            long nextMills=nextMap.get("timeStamp")*1000;
+                            
+                            long diffOfPrevious=exceptionMillis-previosMillis;
+                            long diffOfNext=nextMills-exceptionMillis;
+                            
+                            long diffOfPreviousInseconds=diffOfPrevious / 1000;
+                            long diffOfNextInseconds=diffOfNext / 1000;
+                            
+                            if(diffOfPreviousInseconds < 5 || diffOfNextInseconds < 5){
+                                removalTime.add(previousMap.get("timeStamp"));
+                                removalTime.add(exceptionMap.get("timeStamp"));
+                                removalTime.add(nextMap.get("timeStamp"));
+                            }
+                            else{
+                                removalTime.add(previousMap.get("timeStamp"));
+                                removalTime.add(nextMap.get("timeStamp"));
+                            }
+                                    
+                            exceptionMap.clear();
+                            nextMap.clear();
+                            previousMap.clear();
+                        }
+                    }
+                    System.out.println("Removal Time: "+removalTime);
+                    for(HashMap<String,Long> dataMap:entry.getValue()){
+                        System.out.println(dataMap);
+                        for(long timestamp: removalTime){
+                            if(!dataMap.isEmpty()){
+                                if(dataMap.get("timeStamp") == timestamp){
+                                    dataMap.clear();
+                                }
+                            }
+                        }
+                    }
+                    
+                    /*for(HashMap<String,Long> dataMap:entry.getValue()){
+                        if(!dataMap.isEmpty()){
+                            if(finalAfcMapList.isEmpty()){
+                                List<HashMap<String,Long>> valueList=new ArrayList<>();
+                                valueList.add(dataMap);
+                                finalAfcMapList.put(entry.getKey(),valueList);
+                            }
+                            else{
+                                HashMap<String,Long> afcMap=new HashMap<>();
+                                List<HashMap<String,Long>> valueList=new ArrayList<>();
+                                valueList=finalAfcMapList.get(entry.getKey());
+                                if(valueList == null || valueList.isEmpty()){
+                                    valueList=new ArrayList<>();
+                                    valueList.add(dataMap);
+                                    finalAfcMapList.put(entry.getKey(),valueList);
+                                }
+                                else{
+                                    int size=valueList.size();
+                                    afcMap=valueList.get(size-1);
+                                    long previousfaultCode=afcMap.get("faultState");
+                                    long curentfaultCode=dataMap.get("faultState");
+                                    if((int)previousfaultCode != (int)curentfaultCode){
+                                        valueList.add(dataMap);
+                                        finalAfcMapList.put(entry.getKey(),valueList);
                                     }
                                 }
                             }
-                                
+                        }
+                    }*/
+                    
+                }
+                
+                System.out.println("AFC List After exception:  "+afcMapList);
+                System.out.println("AFC List size After exception:  "+afcMapList.size());
+                System.out.println("Final AFC List: "+finalAfcMapList);
+                System.out.println("Final AFC list size: "+finalAfcMapList.size());
+                
+                for(Map.Entry<String,List<HashMap<String,Long>>> entry : afcMapList.entrySet()){
+                    ArrayList<HashMap<String,String>> ffcMapList= new ArrayList<>();
+                    boolean flag=false;
+                    for(HashMap<String,Long> dataMap:entry.getValue()){
+                        if(!dataMap.isEmpty()){
+                            long faultCode=dataMap.get("faultState");
+                            if((int)faultCode == 2){
+                                if(!flag){
+                                    flag=true;
+                                    HashMap<String,String> tempMap=new HashMap<>();
+                                    tempMap.put("startfaultState",Long.toString(faultCode));
+                                    tempMap.put("startTimeStamp",Long.toString(dataMap.get("timeStamp")));
+                                    tempMap.put("alarmCode", Long.toString(dataMap.get("alarmCode")));
+                                    tempMap.put("assetId",entry.getKey());
+                                    tempMap.put("siteId",assetSiteIdMap.get(entry.getKey()));
+                                    tempMap.put("assetType",assetIdassetTypeMap.get(entry.getKey()));
+                                    tempMap.put("flagState","two");
+                                    ffcMapList.add(tempMap);
+                                }
+                            }
+                            if((int)faultCode == 0){
+                                if(flag){
+                                    for(HashMap<String,String> resultMap:ffcMapList){
+                                        if(resultMap.get("assetId").equalsIgnoreCase(entry.getKey()) && 
+                                                resultMap.get("flagState").equalsIgnoreCase("two")){
+                                            resultMap.put("endfaultState",Long.toString(faultCode));
+                                            resultMap.put("endTimeStamp",Long.toString(dataMap.get("timeStamp")));
+                                            resultMap.put("flagState","one");
+                                        }
+                                    }
+                                    flag=false;
+                                }
+
+                            }
                         }
                     }
                     System.out.println("FFC List First Set:"+ffcMapList);
-                    new Test().calculateSecondFFCLogic(ffcMapList,startDate,endDate);
+                    //new Test().calculateSecondFFCLogic(ffcMapList,startDate,endDate);
                 }
             }   
             catch(Exception e){
@@ -269,7 +421,7 @@ public class Test {
         //new Test().genericFunctionForKPI();
         //new Test().fetchAlarmCategory();
         //Test.convertDate("2019-01-07T11:29:23.9840087");
-        new Test().genericFunctionForKPI("2017-12-02T00:00:00", "2017-12-03T00:00:00");
+        new Test().sokCalculationKPI("2017-03-15T00:00:00", "2017-03-16T00:00:00","amb");
         //new GenericCalculation().fetchTenMinuteAggregatedData("2017-03-13", "WindSpeed");
         }
         catch(Exception e){
@@ -466,10 +618,12 @@ public class Test {
                                 System.out.println("Fault Compared");
                                 String secondSetEndTimeStamp=secondSetFFCMap.get("endTimeStamp");
                                 SimpleDateFormat sdf=new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
-                                Date secondSetEndDate=sdf.parse(secondSetEndTimeStamp);
-                                Date firstSetEndDate=new Date(Long.parseLong(ffcMap.get("endTimeStamp"))*1000);
+                                DateTimeFormatter formatter = DateTimeFormat.forPattern("yyyy-MM-dd HH:mm:ss");
+                                DateTime secondSetEndDate=formatter.parseDateTime(secondSetEndTimeStamp);
+                                //Date secondSetEndDate=sdf.parse(secondSetEndTimeStamp);
+                                DateTime firstSetEndDate=new DateTime(Long.parseLong(ffcMap.get("endTimeStamp"))*1000);
                                 if(secondSetEndDate.compareTo(firstSetEndDate) < 0){
-                                    ffcMap.put("endTimeStamp", Long.toString(secondSetEndDate.getTime()));
+                                    ffcMap.put("endTimeStamp", Long.toString(secondSetEndDate.getMillis()/1000));
                                     ffcMap.put("endfaultState","0");
                                     ffcMap.put("flagState","one");
                                 }
@@ -669,6 +823,8 @@ public class Test {
             return null;
         }
     }
+    
+    
     
     
 }

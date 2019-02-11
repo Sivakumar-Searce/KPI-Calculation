@@ -5,18 +5,50 @@
  */
 package com.blp.test;
 
+
+
+import com.blp.kpicalculation.KPICalculation;
 import java.util.ArrayList;
-import java.util.Date;
 import java.util.HashMap;
 import org.joda.time.DateTime;
+import org.joda.time.DateTimeZone;
+import org.joda.time.format.DateTimeFormat;
+import org.joda.time.format.DateTimeFormatter;
 
 /**
  *
  * @author siva.kumar
  */
 public class TestDates {
-    
     public static void main(String args[]){
+        /*String KPIname=args[0];
+        String fromDate=args[1];
+        String toDate=args[2];
+        String siteId=args[3];
+        
+        System.out.println("KPI name:"+KPIname+" From Date: "+fromDate+" To date: "+toDate+" Site Id: "+siteId);
+        
+        KPICalculation.callKPIMethods(KPIname, fromDate, toDate, siteId);*/
+        
+        long start=1489536000000L;
+        long end= 1489536012000L;
+        
+        long diff=end-start;
+        
+        diff=diff/1000;
+        
+        System.out.println("Diff : "+ diff);
+    }
+    public static void testDates(String[] args) {
+        long timestamp=(long)1523578098;
+        DateTime date=new DateTime(timestamp*1000);
+        date=date.toDateTime(DateTimeZone.UTC);
+        System.out.println("date  :"+date);
+        
+        DateTimeFormatter formatter = DateTimeFormat.forPattern("yyyy-MM-dd HH:mm:ss");
+        System.out.println("Formatted Date :"+formatter.print(date));
+    }
+    public static void test(String args[]){
         try{
         long startTimeStamp=(long)1493683200*1000;
         long endTimeStamp=(long)1493769600*1000;

@@ -173,7 +173,7 @@ public class DBConnection {
                 }
             }
             jdbcObj.printDbStatus();*/
-            new DBUtils().fetchToUpdate24HoursWindSpeedAggData(1.22, "SACU_WT01");
+            new DBUtils().calculate24HoursWindSpeedAggData("","");
     }
     public String fetchalarmcode(ArrayList<HashMap<String,String>> mapList){
         ResultSet rsObj = null;

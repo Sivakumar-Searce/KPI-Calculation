@@ -36,7 +36,7 @@ public class GenericCalculation {
                 byte[] valueBytes = row.getValue(Bytes.toBytes("tag"), Bytes.toBytes(eventsData));
                 if(valueBytes != null){
                     if(segList.get(Bytes.toString(row.getRow()).split("#")[2]) != null){
-                        //System.out.println("Seg List Inner Loop:"+segList.get(Bytes.toString(row.getRow()).split("#")[1]));
+                        //System.out.println("Seg List Inner Loop:"+Bytes.toString(row.getRow()));
                         List<Double> valueList= segList.get(Bytes.toString(row.getRow()).split("#")[2]);
                         valueList.add(Double.valueOf(Bytes.toString(valueBytes)));
                         segList.put(Bytes.toString(row.getRow()).split("#")[2],valueList);

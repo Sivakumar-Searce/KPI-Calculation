@@ -12,6 +12,9 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
 import javax.sql.DataSource;
+import org.joda.time.DateTime;
+import org.joda.time.format.DateTimeFormat;
+import org.joda.time.format.DateTimeFormatter;
 
 /**
  *
@@ -29,22 +32,22 @@ public class InsertTenMinuteAggregate {
                 
                 String assetId=dataMap.get("assetId");
                 String siteID=dataMap.get("siteId");
-                String averageValue=dataMap.get("averageValue");
+                    String averageValue=dataMap.get("averageValue");
                 String tagName=dataMap.get("tagName");
                 double max=Double.parseDouble(dataMap.get("max"));
                 double min=Double.parseDouble(dataMap.get("min"));
                 String startDateTime=dataMap.get("startDateTime");
                 String endDateTime=dataMap.get("endDateTime");
                 
-                Date startDate = new Date(Long.parseLong(startDateTime)*1000);
-                Date endDate = new Date(Long.parseLong(endDateTime)*1000);
+                DateTime startDate = new DateTime(Long.parseLong(startDateTime)*1000);
+                DateTime endDate = new DateTime(Long.parseLong(endDateTime)*1000);
                 
-                java.text.SimpleDateFormat sdf = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
-                
+                DateTimeFormatter formatter = DateTimeFormat.forPattern("yyyy-MM-dd HH:mm:ss");
+                    
                 Statement statement = connObj.createStatement();
 
                 statement.executeUpdate("insert into ten_min_agg(site_id,asset_id,tag_name,from_ts,to_ts,agg_value,min_value,max_value) values('"+siteID+"','"+assetId+"',"
-                        + "'"+tagName+"','"+sdf.format(startDate)+"','"+sdf.format(endDate)+"',"+averageValue+",'"+min+"','"+max+"')");
+                        + "'"+tagName+"','"+formatter.print(startDate)+"','"+formatter.print(endDate)+"',"+averageValue+",'"+min+"','"+max+"')");
                 
             }
             
@@ -83,15 +86,15 @@ public class InsertTenMinuteAggregate {
                     String startDateTime=dataMap.get("startDateTime");
                     String endDateTime=dataMap.get("endDateTime");
 
-                    Date startDate = new Date(Long.parseLong(startDateTime)*1000);
-                    Date endDate = new Date(Long.parseLong(endDateTime)*1000);
+                    DateTime startDate = new DateTime(Long.parseLong(startDateTime)*1000);
+                    DateTime endDate = new DateTime(Long.parseLong(endDateTime)*1000);
 
-                    java.text.SimpleDateFormat sdf = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
-
+                    DateTimeFormatter formatter = DateTimeFormat.forPattern("yyyy-MM-dd HH:mm:ss");
+                    
                     Statement statement = connObj.createStatement();
 
                     statement.executeUpdate("insert into ten_min_agg(site_id,asset_id,tag_name,from_ts,to_ts,agg_value) values('"+siteID+"','"+assetId+"',"
-                            + "'"+tagName+"','"+sdf.format(startDate)+"','"+sdf.format(endDate)+"',"+averageValue+")");
+                            + "'"+tagName+"','"+formatter.print(startDate)+"','"+formatter.print(endDate)+"',"+averageValue+")");
                 }
             }
             
@@ -212,15 +215,57 @@ public class InsertTenMinuteAggregate {
                 String startDateTime=dataMap.get("startDate");
                 String endDateTime=dataMap.get("endDate");
                 
-                Date startDate = new Date(Long.parseLong(startDateTime)*1000);
-                Date endDate = new Date(Long.parseLong(endDateTime)*1000);
+                DateTime startDate = new DateTime(Long.parseLong(startDateTime)*1000);
+                DateTime endDate = new DateTime(Long.parseLong(endDateTime)*1000);
                 
-                java.text.SimpleDateFormat sdf = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+                DateTimeFormatter formatter = DateTimeFormat.forPattern("yyyy-MM-dd HH:mm:ss");
                 
                 Statement statement = connObj.createStatement();
 
                 statement.executeUpdate("insert into ten_min_agg(site_id,asset_id,tag_name,from_ts,to_ts,agg_value) values('"+siteID+"','"+assetId+"',"
-                        + "'"+tagName+"','"+sdf.format(startDate)+"','"+sdf.format(endDate)+"',"+averageValue+")");
+                        + "'"+tagName+"','"+formatter.print(startDate)+"','"+formatter.print(endDate)+"',"+averageValue+")");
+                
+            }
+            
+            return null;
+        }
+        catch(Exception e){
+            e.printStackTrace();
+            return null;
+        }
+        finally {
+                try {
+                    // Closing Connection Object
+                    if(connObj != null) {
+                            connObj.close();
+                    }
+                } catch(Exception sqlException) {
+                        sqlException.printStackTrace();
+                }
+                jdbcObj.printDbStatus();
+            }
+    }
+    public String insertDailyTechnicalAssetDetails(ArrayList<HashMap<String,String>> listOfAvgValues){
+        Connection connObj = null;
+        DBConnection jdbcObj = new DBConnection();
+        try{
+            DataSource dataSource = jdbcObj.setUpPool();
+            connObj = dataSource.getConnection();
+            
+            for(HashMap<String,String> dataMap:listOfAvgValues){
+                
+                String assetId=dataMap.get("assetId");
+                String siteID=dataMap.get("siteId");
+                double averageValue=Double.parseDouble(dataMap.get("avgValue"));
+                String tagName="TechnicalAsset";
+                String dateInString=dataMap.get("startDate");
+                double max_value=Double.parseDouble("0");
+                double min_value=Double.parseDouble("0");
+                
+                Statement statement = connObj.createStatement();
+
+                statement.executeUpdate("insert into daily_agg(site_id,asset_id,tag_name,date_agg,agg_value,max_value,min_value) values('"+siteID+"','"+assetId+"',"
+                        + "'"+tagName+"','"+dateInString+"',"+averageValue+","+max_value+","+min_value+")");
                 
             }
             

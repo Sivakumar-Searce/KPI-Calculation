@@ -9,12 +9,10 @@ import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.Statement;
 import java.util.ArrayList;
-import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import javax.sql.DataSource;
-import org.joda.time.DateTime;
 
 /**
  *
@@ -244,17 +242,17 @@ public class DBUtils {
             jdbcObj.printDbStatus();
             
             Statement statement = connObj.createStatement();
-            rsObj = statement.executeQuery("select * from 24hrs_windspeed_avg_data where ASSET_NAME='SACU_WT01'");
+            rsObj = statement.executeQuery("select * from 24hrs_windspeed_avg_data where ASSET_NAME='"+assetName+"'");
             
             while (rsObj.next()) {
                 List<Double> valueList=new ArrayList<>();
                 for(int i=0;i<=23;i++){
                     double hourValue=0;
                     if(i < 10){
-                        hourValue=(Double)rsObj.getObject("0"+i+"");
+                        hourValue=(double)rsObj.getObject("0"+i+"");
                     }
                     else{
-                        hourValue=(Double)rsObj.getObject(""+i+"");
+                        hourValue=(double)rsObj.getObject(""+i+"");
                     }
                     valueList.add(hourValue);
                 }
@@ -267,25 +265,25 @@ public class DBUtils {
             String sql=null;
             for(Map.Entry<String,List<Double>> entry : aggDataList.entrySet()){
                 List<Double> valueList=entry.getValue();
-                System.out.println("Value List before adding: "+valueList);
-                System.out.println("Value List size before removiing: "+valueList.size());
+                /*System.out.println("Value List before adding: "+valueList);
+                System.out.println("Value List size before removiing: "+valueList.size());*/
                 valueList.remove(0);
-                System.out.println("Value List size after removiing: "+valueList.size());
+                //System.out.println("Value List size after removiing: "+valueList.size());
                 
                 valueList.add(value);
-                System.out.println("Value List size after adding: "+valueList.size());
-                System.out.println("Value List after adding: "+valueList);
+                //System.out.println("Value List size after adding: "+valueList.size());
+                //System.out.println("Value List after adding: "+valueList);
                 
                 sql="update 24hrs_windspeed_avg_data set ";
                 for(int i=0;i < valueList.size();i++){
                     if(i < 10){
-                        sql=sql+"0"+i+"= "+valueList.get(i)+",";
+                        sql=sql+"`0"+i+"`= "+valueList.get(i)+",";
                     }
                     else if(i == 23){
-                        sql=sql+i+"= "+valueList.get(i);
+                        sql=sql+"`"+i+"`= "+valueList.get(i);
                     }
                     else{
-                        sql=sql+i+"= "+valueList.get(i)+",";
+                        sql=sql+"`"+i+"`= "+valueList.get(i)+",";
                     }
                     
                 }
@@ -294,10 +292,11 @@ public class DBUtils {
             }
             
             System.out.println("SQL : "+sql);
-            /*connObj = dataSource.getConnection();
+            
+            connObj = dataSource.getConnection();
             statement = connObj.createStatement();
             
-            statement.executeUpdate(sql);*/
+            statement.executeUpdate(sql);
             
             return null;
         }
@@ -322,27 +321,208 @@ public class DBUtils {
         }
     }
     
-    public String calculate24HoursWindSpeedAggData(){
+    public ArrayList<HashMap<String,String>> calculate24HoursWindSpeedAggData(String startDate,String endDate){
         ResultSet rsObj = null;
         Connection connObj = null;
         DBConnection jdbcObj = new DBConnection();
         try{
+            
+            List<String> assetList=new DBUtils().fetchListOfAssetNames();
+            
+            ArrayList<HashMap<String,String>> averageList=new ArrayList<>();
+            
             DataSource dataSource = jdbcObj.setUpPool();
             connObj = dataSource.getConnection();
             jdbcObj.printDbStatus();
             
-            Statement statement = connObj.createStatement();
-            rsObj = statement.executeQuery("SELECT ASSET_ID, AVG(AGG_VALUE) FROM m2m_blp.ten_min_agg where from_ts >= '2018-05-02 16:00:00' and to_ts <= '2018-05-02 17:00:00' and asset_id = 'AMB_GA05' and tag_name = 'WINDSPEED';");
+            for(String assetId:assetList){
             
-            while (rsObj.next()) {
-                
+                Statement statement = connObj.createStatement();
+                rsObj = statement.executeQuery("SELECT ASSET_ID, AVG(AGG_VALUE) as agg_value FROM m2m_blp.ten_min_agg where from_ts >= '2018-05-02 16:00:00' and to_ts <= '2018-05-02 17:00:00' and asset_id ='"+assetId+"' and tag_name = 'WINDSPEED';");
+
+                while (rsObj.next()) {
+                    HashMap<String,String> dataMap=new HashMap<>();
+                    if(rsObj.getObject("ASSET_ID") != null && rsObj.getObject("agg_value") != null){
+                        System.out.println((String)rsObj.getObject("ASSET_ID") +" : "+(Double)rsObj.getObject("agg_value"));
+                        dataMap.put("assetId",(String)rsObj.getObject("ASSET_ID"));
+                        dataMap.put("aggValue",Double.toString((Double)rsObj.getObject("agg_value")));
+
+                        averageList.add(dataMap);
+                    }
+                }
+            }
+            System.out.println("Average List : "+averageList);
+            for(HashMap<String,String> dataMap:averageList){
+                new DBUtils().fetchToUpdate24HoursWindSpeedAggData(Double.parseDouble(dataMap.get("aggValue")),dataMap.get("assetId"));
             }
             
-            return null;
+            return averageList;
         }
         catch(Exception e){
             e.printStackTrace();
             return null;
+        }
+        finally {
+            try {
+                    // Closing ResultSet Object
+                if(rsObj != null) {
+                        rsObj.close();
+                }
+
+                // Closing Connection Object
+                if(connObj != null) {
+                        connObj.close();
+                }
+            } catch(Exception sqlException) {
+                    sqlException.printStackTrace();
+            }
+        }
+    }
+    public ArrayList<String> fetchListOfAssetNames(){
+        ResultSet rsObj = null;
+        Connection connObj = null;
+        DBConnection jdbcObj = new DBConnection();
+        ArrayList<String> resultList=new ArrayList<>();
+        try{
+            DataSource dataSource = jdbcObj.setUpPoolPulseTest();
+            connObj = dataSource.getConnection();
+            jdbcObj.printDbStatus();
+            
+            Statement statement = connObj.createStatement();
+            rsObj = statement.executeQuery("SELECT asset_name FROM oriondb_pulse_test.24hrs_windspeed_avg_data;");
+            
+            while (rsObj.next()) {
+                resultList.add((String)rsObj.getObject("asset_name"));
+            }
+            
+            return resultList;
+        }
+        catch(Exception e){
+            e.printStackTrace();
+            return null;
+        }
+        finally {
+            try {
+                // Closing ResultSet Object
+                if(rsObj != null) {
+                        rsObj.close();
+                }
+
+                // Closing Connection Object
+                if(connObj != null) {
+                        connObj.close();
+                }
+            } catch(Exception sqlException) {
+                    sqlException.printStackTrace();
+            }
+        }
+    }
+    
+    public ArrayList<HashMap<String,String>> fetchTenMinuteAggregates(String startDate, String endDate,String tagName){
+        ResultSet rsObj = null;
+        Connection connObj = null;
+        DBConnection jdbcObj = new DBConnection();
+        try{
+            DataSource dataSource= jdbcObj.setUpPool();
+            
+            ArrayList<HashMap<String,String>> listMap=new ArrayList<>();
+            
+            connObj = dataSource.getConnection();
+            jdbcObj.printDbStatus();
+            
+            Statement statement = connObj.createStatement();
+            rsObj = statement.executeQuery("select site_id,asset_id,tag_name,agg_value,from_ts,to_ts from ten_min_agg where from_ts='"+startDate+"' and to_ts='"+endDate+"' and tag_name='"+tagName+"'");
+            
+            while (rsObj.next()) {
+                String site_id=(String)rsObj.getObject("site_id");
+                String assetId=(String)rsObj.getObject("asset_id");
+                String tag_name=(String)rsObj.getObject("tag_name");
+                double avgValue=(Double)rsObj.getObject("agg_value");
+                
+                HashMap<String,String> hmap=new HashMap<>();
+                hmap.put("siteId",site_id);
+                hmap.put("assetId",assetId);
+                hmap.put("tagName",tag_name);
+                hmap.put("avgValue",Double.toString(avgValue));
+                hmap.put("startDate",(String)rsObj.getObject("from_ts"));
+                hmap.put("endDate",(String)rsObj.getObject("to_ts"));
+                
+                listMap.add(hmap);
+            }
+            
+            return listMap;
+        }
+        catch(Exception e){
+            return null;
+        }
+        finally {
+            try {
+                    // Closing ResultSet Object
+                if(rsObj != null) {
+                        rsObj.close();
+                }
+
+                // Closing Connection Object
+                if(connObj != null) {
+                        connObj.close();
+                }
+            } catch(Exception sqlException) {
+                    sqlException.printStackTrace();
+            }
+        }
+    }
+    
+    public ArrayList<HashMap<String,String>> fetchSumOfTenMinuteAggregatesSOK(String startDate, String endDate,String tagName){
+        ResultSet rsObj = null;
+        Connection connObj = null;
+        DBConnection jdbcObj = new DBConnection();
+        try{
+            DataSource dataSource= jdbcObj.setUpPool();
+            
+            ArrayList<HashMap<String,String>> listMap=new ArrayList<>();
+            
+            connObj = dataSource.getConnection();
+            jdbcObj.printDbStatus();
+            
+            Statement statement = connObj.createStatement();
+            rsObj = statement.executeQuery("select site_id,asset_id,tag_name,sum(agg_value) as agg_value from m2m_blp.ten_min_agg where from_ts >= '"+startDate+"' and to_ts < '"+endDate+"'  and tag_name='"+tagName+"' group by asset_id;");
+            
+            while (rsObj.next()) {
+                String site_id=(String)rsObj.getObject("site_id");
+                String assetId=(String)rsObj.getObject("asset_id");
+                String tag_name=(String)rsObj.getObject("tag_name");
+                double avgValue=(Double)rsObj.getObject("agg_value");
+                
+                HashMap<String,String> hmap=new HashMap<>();
+                hmap.put("siteId",site_id);
+                hmap.put("assetId",assetId);
+                hmap.put("tagName",tag_name);
+                hmap.put("avgValue",Double.toString(avgValue/86400));
+                hmap.put("startDate",startDate);
+                hmap.put("endDate",endDate);
+                
+                listMap.add(hmap);
+            }
+            
+            return listMap;
+        }
+        catch(Exception e){
+            return null;
+        }
+        finally {
+            try {
+                    // Closing ResultSet Object
+                if(rsObj != null) {
+                        rsObj.close();
+                }
+
+                // Closing Connection Object
+                if(connObj != null) {
+                        connObj.close();
+                }
+            } catch(Exception sqlException) {
+                    sqlException.printStackTrace();
+            }
         }
     }
     

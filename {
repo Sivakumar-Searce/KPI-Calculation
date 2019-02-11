@@ -21,4 +21,53 @@
 }
 
 
-mvn compile exec:java -Dexec.mainClass=com.blp.ingestion.Main  -Dexec.args="--project=platform-dev-blp --stagingLocation=gs://blp-dataflow-testing/staging/ --outputDirectory=gs://blp-dataflow-testing/solar-data-new/ --inputTopic=projects/platform-dev-blp/topics/solar-ingest  --tempLocation=gs://blp-dataflow-testing/temp/ --runner=DataFlow"
+mvn compile exec:java -Dexec.mainClass=com.blp.ingestion.Main  -Dexec.args="--project=platform-dev-blp --stagingLocation=gs://blp-dataflow-testing/staging/ --outputDirectory=gs://blp-dataflow-testing/historical_didm_nov17/ --inputTopic=projects/platform-dev-blp/topics/wind_ingest  --tempLocation=gs://blp-dataflow-testing/temp/ --runner=DataFlow"
+
+mvn compile exec:java -Dexec.mainClass=com.blp.ingestion.Main  -Dexec.args="--project=platform-dev-blp --stagingLocation=gs://blp-dataflow-testing/staging/ --runner=DirectRunner"
+
+
+update 24hrs_windspeed_avg_data set 00= '9.99999999999E9',01= '9.99999999999E9',02= '9.99999999999E9',03= '9.99999999999E9',04= '9.99999999999E9',05= '9.99999999999E9',06= '9.99999999999E9',07= '9.99999999999E9',08= '9.99999999999E9',09= '9.99999999999E9',10= '9.99999999999E9',11= '9.99999999999E9',12= '9.99999999999E9',13= '9.99999999999E9',14= '9.99999999999E9',15= '9.99999999999E9',16= '9.99999999999E9',17= '9.99999999999E9',18= '9.99999999999E9',19= '9.99999999999E9',20= '9.99999999999E9',21= '9.99999999999E9',22= '9.99999999999E9',23= '9.155134836755039' where ASSET_NAME='AMB_GA10';
+
+
+16:30:24 update 24hrs_windspeed_avg_data set 00= '9.99999999999E9',01= '9.99999999999E9',02= '9.99999999999E9',03= '9.99999999999E9',04= '9.99999999999E9',05= '9.99999999999E9',06= '9.99999999999E9',07= '9.99999999999E9',08= '9.99999999999E9',09= '9.99999999999E9',10= '9.99999999999E9',11= '9.99999999999E9',12= '9.99999999999E9',13= '9.99999999999E9',14= '9.99999999999E9',15= '9.99999999999E9',16= '9.99999999999E9',17= '9.99999999999E9',18= '9.99999999999E9',19= '9.99999999999E9',20= '9.99999999999E9',21= '9.99999999999E9',22= '9.99999999999E9',23= '9.155134836755039' where ASSET_NAME='AMB_GA10' Error Code: 1064. You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use near '00= '9.99999999999E9',01= '9.99999999999E9',02= '9.99999999999E9',03= '9.9999999' at line 1  0.258 sec
+
+
+
+16:31:13 update 24hrs_windspeed_avg_data set 00= '9.99999999999E9',01= '9.99999999999E9',02= '9.99999999999E9',03= '9.99999999999E9',04= '9.99999999999E9',05= '9.99999999999E9',06= '9.99999999999E9',07= '9.99999999999E9',08= '9.99999999999E9',09= '9.99999999999E9',10= '9.99999999999E9',11= '9.99999999999E9',12= '9.99999999999E9',13= '9.99999999999E9',14= '9.99999999999E9',15= '9.99999999999E9',16= '9.99999999999E9',17= '9.99999999999E9',18= '9.99999999999E9',19= '9.99999999999E9',20= '9.99999999999E9',21= '9.99999999999E9',22= '9.99999999999E9',23= '9.155134836755039' where ASSET_NAME='AMB_GA10' Error Code: 1064. You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use near '00= '9.99999999999E9',01= '9.99999999999E9',02= '9.99999999999E9',03= '9.9999999' at line 1  0.050 sec
+
+motoG5().
+
+
+
+Caused by: com.mysql.jdbc.exceptions.jdbc4.MySQLTransactionRollbackException: Lock wait timeout exceeded; try restarting transaction
+        sun.reflect.GeneratedConstructorAccessor41.newInstance(Unknown Source)
+        sun.reflect.DelegatingConstructorAccessorImpl.newInstance(DelegatingConstructorAccessorImpl.java:45)
+        java.lang.reflect.Constructor.newInstance(Constructor.java:423)
+        com.mysql.jdbc.Util.handleNewInstance(Util.java:404)
+        com.mysql.jdbc.Util.getInstance(Util.java:387)
+        com.mysql.jdbc.SQLError.createSQLException(SQLError.java:946)
+        com.mysql.jdbc.MysqlIO.checkErrorPacket(MysqlIO.java:3878)
+        com.mysql.jdbc.MysqlIO.checkErrorPacket(MysqlIO.java:3814)
+        com.mysql.jdbc.MysqlIO.sendCommand(MysqlIO.java:2478)
+        com.mysql.jdbc.MysqlIO.sqlQueryDirect(MysqlIO.java:2625)
+        com.mysql.jdbc.ConnectionImpl.execSQL(ConnectionImpl.java:2551)
+        com.mysql.jdbc.PreparedStatement.executeInternal(PreparedStatement.java:1861)
+        com.mysql.jdbc.PreparedStatement.executeUpdateInternal(PreparedStatement.java:2073)
+        com.mysql.jdbc.PreparedStatement.executeBatchSerially(PreparedStatement.java:1751)
+        com.mysql.jdbc.PreparedStatement.executeBatchInternal(PreparedStatement.java:1257)
+        com.mysql.jdbc.StatementImpl.executeBatch(StatementImpl.java:959)
+        org.apache.commons.dbcp2.DelegatingStatement.executeBatch(DelegatingStatement.java:345)
+        org.apache.commons.dbcp2.DelegatingStatement.executeBatch(DelegatingStatement.java:345)
+        org.apache.beam.sdk.io.jdbc.JdbcIO$Write$WriteFn.executeBatch(JdbcIO.java:598)
+        org.apache.beam.sdk.io.jdbc.JdbcIO$Write$WriteFn.finishBundle(JdbcIO.java:593)
+        org.apache.beam.sdk.io.jdbc.JdbcIO$Write$WriteFn$DoFnInvoker.invokeFinishBundle(Unknown Source)
+        org.apache.beam.runners.core.SimpleDoFnRunner.finishBundle(SimpleDoFnRunner.java:195)
+        com.google.cloud.dataflow.worker.SimpleParDoFn.finishBundle(SimpleParDoFn.java:405)
+        com.google.cloud.dataflow.worker.util.common.worker.ParDoOperation.finish(ParDoOperation.java:55)
+        com.google.cloud.dataflow.worker.util.common.worker.MapTaskExecutor.execute(MapTaskExecutor.java:83)
+        com.google.cloud.dataflow.worker.StreamingDataflowWorker.process(StreamingDataflowWorker.java:1227)
+        com.google.cloud.dataflow.worker.StreamingDataflowWorker.access$1000(StreamingDataflowWorker.java:135)
+        com.google.cloud.dataflow.worker.StreamingDataflowWorker$6.run(StreamingDataflowWorker.java:966)
+        java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1142)
+        java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:617)
+        java.lang.Thread.run(Thread.java:745)

@@ -5,7 +5,9 @@
  */
 package com.blp.kpicalculation;
 
+import com.blp.dbconnection.DBUtils;
 import com.blp.ingesttenminagg.InsertTenMinuteAggregate;
+import com.blp.test.Test;
 import com.google.cloud.bigtable.hbase.BigtableConfiguration;
 import java.text.DecimalFormat;
 import java.text.SimpleDateFormat;
@@ -24,6 +26,9 @@ import org.apache.hadoop.hbase.client.Scan;
 import org.apache.hadoop.hbase.client.Table;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.joda.time.DateTime;
+import org.joda.time.Instant;
+import org.joda.time.format.DateTimeFormat;
+import org.joda.time.format.DateTimeFormatter;
 
 /**
  *
@@ -33,8 +38,68 @@ public class KPICalculation {
 
     public static String projectId = "platform-dev-blp";  // my-gcp-project-id
     public static String instanceId = "blp-dev-bt"; // my-bigtable-instance-id
-    public static String tableId = "sok_data_test";
+    public static String tableId = "historical_wind_alarmdata";
     //public static String tableId = "validate_amb"; //for KPI Calculation
+    
+    public static void callKPIMethods(String KPIname,String fromDate,String toDate,String siteId){
+        try{
+            if(KPIname.equalsIgnoreCase("GenrationKPI")){
+                new KPICalculation().generationKPI(fromDate,siteId);
+            }
+            else if(KPIname.equalsIgnoreCase("ActualProduction")){
+                KPICalculation.iterateDaysForKPICall(KPIname, fromDate, toDate, siteId);
+            }
+            else if(KPIname.equalsIgnoreCase("WindSpeed")){
+                KPICalculation.iterateDaysForKPICall(KPIname, fromDate, toDate, siteId);
+            }
+            else if(KPIname.equalsIgnoreCase("PotentialProduction")){
+                KPICalculation.iterateDaysForKPICall(KPIname, fromDate, toDate, siteId);
+            }
+            else if(KPIname.equalsIgnoreCase("SOK")){
+                new Test().sokCalculationKPI(fromDate,toDate,siteId);
+            }
+        }
+        catch(Exception e){
+            e.printStackTrace();
+        }
+    }
+    
+    public static void iterateDaysForKPICall(String KPIname,String fromDate,String toDate,String siteId){
+        try{
+            LocalDateTime startlocalDateTime = LocalDateTime.parse(fromDate);
+            Instant startinstant= new Instant(startlocalDateTime.atZone(ZoneId.of("UTC")).toInstant().toEpochMilli());
+            DateTime startdate=new DateTime(startinstant);
+            
+            LocalDateTime tolocalDateTime = LocalDateTime.parse(toDate);
+            Instant endinstant= new Instant(tolocalDateTime.atZone(ZoneId.of("UTC")).toInstant().toEpochMilli());
+            DateTime enddate=new DateTime(endinstant);
+            
+            while (startdate.compareTo(enddate) != 0) {
+                DateTime tempDate = startdate;
+                startdate = startdate.plusMinutes(10);  
+                
+                DateTimeFormatter startformatter = DateTimeFormat.forPattern("yyyy-MM-dd HH:mm:ss");
+                
+                if(KPIname.equalsIgnoreCase("ActualProduction")){
+                    new KPICalculation().actualProductionKPICalculation(startformatter.print(tempDate).replace(" ", "T"),startformatter.print(startdate).replace(" ", "T"));
+                }
+                else if(KPIname.equalsIgnoreCase("WindSpeed")){
+                    new KPICalculation().windSpeedKPICalculation(startformatter.print(tempDate).replace(" ", "T"),startformatter.print(startdate).replace(" ", "T"));
+                }
+                else if(KPIname.equalsIgnoreCase("PotentialProductionWhenAvailable")){
+                    new KPICalculation().potentialProductionWhenAvailableKPICalculation(startformatter.print(tempDate).replace(" ", "T"),startformatter.print(startdate).replace(" ", "T"));
+                }
+                else if(KPIname.equalsIgnoreCase("PotentialProduction")){
+                    new KPICalculation().potentialProductionKPICalculation(startformatter.print(tempDate).replace(" ", "T"),startformatter.print(startdate).replace(" ", "T"));
+                }
+            }
+            
+        }
+        catch(Exception e){
+            e.printStackTrace();
+        }
+    }
+    
     /*
     This is test Function for testing purpose
     */
@@ -109,18 +174,22 @@ public class KPICalculation {
         try {
 
             LocalDateTime localDateTime = LocalDateTime.parse(dateInString);
-
-            Date out = Date.from(localDateTime.atZone(ZoneId.of("UTC")).toInstant());
+            Instant instant= new Instant(localDateTime.atZone(ZoneId.of("UTC")).toInstant().toEpochMilli());
+            DateTime date=new DateTime(instant);
+            DateTimeFormatter formatter = DateTimeFormat.forPattern("yyyy-MM-dd HH:mm:ss");
+            System.out.println("Formatted Date :"+formatter.print(date));
+            
+            /*Date out = Date.from(localDateTime.atZone(ZoneId.of("UTC")).toInstant());
 
             //long reverseTS=Long.MAX_VALUE-out.getTime();
             System.out.println("Timestamp: " + out.getTime() / 1000);
-            System.out.println("");
+            System.out.println("");*/
 
             /*DateTimeFormatter formatter = DateTimeFormat.forPattern("yyyy-mm-dd HH:mm:ss");
             DateTime date = formatter.parseDateTime(dateInString);
             
             System.out.println("Date :"+date);*/
-            return out.getTime() / 1000;
+            return date.getMillis()/1000;
         } catch (Exception e) {
             e.printStackTrace();
             long temp = -1;
@@ -136,9 +205,9 @@ public class KPICalculation {
     
     public static void main(String args[]) {
 
-        DateTime startDate = new DateTime(2017, 12, 02, 00, 00, 00);
+        DateTime startDate = new DateTime(2017, 03, 13, 00, 00, 00);
 
-        DateTime endDate = new DateTime(2017, 12, 05, 00, 00, 00);
+        DateTime endDate = new DateTime(2017, 03, 15, 00, 00, 00);
 
         DecimalFormat df = new DecimalFormat("00");
         int count = 0;
@@ -184,7 +253,7 @@ public class KPICalculation {
     Calculates the Daily Genration KPI
     */
 
-    public String generationKPI(String dateInString) {
+    public String generationKPI(String dateInString,String siteId) {
         try {
             byte[] COLUMN_FAMILY_NAME = Bytes.toBytes("tag");
             byte[] COLUMN_NAME = Bytes.toBytes("TotalProduction_Raw");
@@ -438,10 +507,9 @@ public class KPICalculation {
             System.out.println("End Date: " + endDateInString);
             long endDate = KPICalculation.convertDate(endDateInString);
 
-            ArrayList<HashMap<String, String>> resultListMap = new ArrayList<HashMap<String, String>>();
+            ArrayList<HashMap<String, String>> resultListMap = new ArrayList<>();
 
-            String result = null;
-
+            
             try (Connection connection = BigtableConfiguration.connect(projectId, instanceId)) {
 //                String rowKey = Long.toString(Long.MAX_VALUE-endDate);
 //                String stopValue=Long.toString(Long.MAX_VALUE-startDate);
@@ -454,16 +522,16 @@ public class KPICalculation {
                 //Scan scan = new Scan();
                 Table table = connection.getTable(TableName.valueOf(tableId));
 
-                resultListMap = new GenericCalculation().processScanedData("ActivePower", table.getScanner(scan), startDate, endDate);
+                resultListMap = new GenericCalculation().processScanedData("pad_PowerAC", table.getScanner(scan), startDate, endDate);
 
-                //System.out.println("Re:" + resultListMap);
+                System.out.println("Re:" + resultListMap);
                 
                 for (HashMap<String, String> mapData : resultListMap) {
                         double avg = Double.parseDouble(mapData.get("averageValue")) / 6;
                         mapData.put("averageValue", Double.toString(avg));
                     }
 
-                new InsertTenMinuteAggregate().insertTenMinuteAggregate(resultListMap);
+                //new InsertTenMinuteAggregate().insertTenMinuteAggregate(resultListMap);
                 
                 System.out.println("Inserting Successfully");
                 
@@ -479,8 +547,58 @@ public class KPICalculation {
         }
     }
     /*
-    Calculates the 10 minute aggreagation for Potential production KPI
+    Calculates the 10 minute aggreagation for Potential production when available KPI
     */
+    public String potentialProductionWhenAvailableKPICalculation(String startDateInString, String endDateInString) {
+        try {
+
+            System.out.println("Start Date: " + startDateInString);
+            long startDate = KPICalculation.convertDate(startDateInString);
+            System.out.println("End Date: " + endDateInString);
+            long endDate = KPICalculation.convertDate(endDateInString);
+
+            ArrayList<HashMap<String, String>> listOfPotentialProductionAggregates = new ArrayList<HashMap<String, String>>();
+            ArrayList<HashMap<String, String>> listOfSOKAggregates = new ArrayList<HashMap<String, String>>();
+            ArrayList<HashMap<String, String>> resultList = new ArrayList<HashMap<String, String>>();
+            
+            startDateInString=startDateInString.replace("T", " ");
+            endDateInString=endDateInString.replace("T", " ");
+            
+            listOfPotentialProductionAggregates=new DBUtils().fetchTenMinuteAggregates(startDateInString, endDateInString, "PotentialProduction");
+            listOfSOKAggregates=new DBUtils().fetchTenMinuteAggregates(startDateInString, endDateInString, "SOK");
+
+            
+            for(HashMap<String,String> prodMap:listOfPotentialProductionAggregates){
+                for(HashMap<String,String> sokMap:listOfSOKAggregates){
+                    if(sokMap.get("assetId").equalsIgnoreCase(prodMap.get("assetId"))){
+                        double result=Double.parseDouble(prodMap.get("avgValue"))/(Double.parseDouble(sokMap.get("avgValue")) * 600);
+                        HashMap<String,String> resultMap=new HashMap<>();
+                        
+                        resultMap.put("siteId",prodMap.get("siteId"));
+                        resultMap.put("assetId",prodMap.get("assetId"));
+                        resultMap.put("tagName",prodMap.get("tagName"));
+                        resultMap.put("averageValue",Double.toString(result));
+                        resultMap.put("startDateTime",Long.toString(startDate));
+                        resultMap.put("endDateTime",Long.toString(endDate));
+                        resultMap.put("max","0");
+                        resultMap.put("min","0");
+                        
+                        resultList.add(resultMap);
+                    }
+                }
+            }
+
+            new InsertTenMinuteAggregate().insertTenMinuteAggregate(resultList);
+
+            return "success";
+
+            
+        } catch (Exception e) {
+            e.printStackTrace();
+            return null;
+        }
+    }
+    
     public String potentialProductionKPICalculation(String startDateInString, String endDateInString) {
         try {
 
@@ -530,11 +648,208 @@ public class KPICalculation {
     /*
     Calculates the sum of all values passed in list . This is an utility function.
     */
-    
     public static double sum(List<Double> list) {
         double sum = 0;
         sum = list.stream().map((i) -> i).reduce(sum, Double::sum);
         return sum;
     }
+    public String technicalAvailability(String startDateInString, String endDateInString) {
+        try {
+            
+            startDateInString=startDateInString.replace("T", " ");
+            endDateInString=endDateInString.replace("T", " ");
+            
+            ArrayList<HashMap<String,String>> resultMap=new ArrayList<>();
+            resultMap=new DBUtils().fetchSumOfTenMinuteAggregatesSOK(startDateInString,endDateInString,"SOK");
+            
+            new InsertTenMinuteAggregate().insertDailyTechnicalAssetDetails(resultMap);
+            
+            return null;
+        }
+        catch(Exception e){
+            e.printStackTrace();
+            return null;
+        }
+    }
+    
+    public String recoveryRateKPICalculation(String startDateInString, String endDateInString) {
+        try {
 
+            System.out.println("Start Date: " + startDateInString);
+            long startDate = KPICalculation.convertDate(startDateInString);
+            System.out.println("End Date: " + endDateInString);
+            long endDate = KPICalculation.convertDate(endDateInString);
+
+            ArrayList<HashMap<String, String>> resultListMap = new ArrayList<>();
+            HashMap<String,String> assetSiteIdMap=new HashMap<>();
+            HashMap<String, Integer> assetonesMap = new HashMap<>();
+            HashMap<String, Integer> assettotalMap = new HashMap<>();
+
+            try (Connection connection = BigtableConfiguration.connect(projectId, instanceId)) {
+//                String rowKey = Long.toString(Long.MAX_VALUE-endDate);
+//                String stopValue=Long.toString(Long.MAX_VALUE-startDate);
+
+                String rowKey = Long.toString(startDate);
+                String stopValue = Long.toString(endDate);
+
+                Scan scan = new Scan().withStartRow(Bytes.toBytes(rowKey), true).withStopRow(Bytes.toBytes(stopValue), true);
+
+                //Scan scan = new Scan();
+                Table table = connection.getTable(TableName.valueOf(tableId));
+                
+                ResultScanner resultScanner= table.getScanner(scan);
+                
+                for (Result row : resultScanner) {
+                    byte[] valueBytesOfActivePower = row.getValue(Bytes.toBytes("tag"), Bytes.toBytes("ActivePower"));
+                    byte[] valueBytesOfWindSpeed = row.getValue(Bytes.toBytes("tag"), Bytes.toBytes("WindSpeed"));
+                    
+                    if(valueBytesOfActivePower != null && valueBytesOfWindSpeed != null 
+                            && Bytes.toDouble(valueBytesOfActivePower)>0.0 && Bytes.toDouble(valueBytesOfWindSpeed)>0.0){
+                        if(assetonesMap.get(Bytes.toString(row.getRow()).split("#")[2]) != null){
+                            int count = assetonesMap.get(Bytes.toString(row.getRow()).split("#")[2]);
+                            count++;
+                            assetonesMap.put(Bytes.toString(row.getRow()).split("#")[2], count);
+                            assetSiteIdMap.put(Bytes.toString(row.getRow()).split("#")[2],Bytes.toString(row.getRow()).split("#")[1]);
+                        }
+                        else{
+                            assetonesMap.put(Bytes.toString(row.getRow()).split("#")[2], 1);
+                            assetSiteIdMap.put(Bytes.toString(row.getRow()).split("#")[2],Bytes.toString(row.getRow()).split("#")[1]);
+                        }
+                    }
+                    if(assettotalMap.get(Bytes.toString(row.getRow()).split("#")[2]) != null){
+                        int count = assettotalMap.get(Bytes.toString(row.getRow()).split("#")[2]);
+                        count++;
+                        assettotalMap.put(Bytes.toString(row.getRow()).split("#")[2], count);
+                    }
+                    else{
+                        assettotalMap.put(Bytes.toString(row.getRow()).split("#")[2], 1);
+                    }
+                }
+                for(Map.Entry<String,Integer> entry : assettotalMap.entrySet()){
+                    HashMap<String,String> resultMap=new HashMap<>();
+                    
+                    int ones = assetonesMap.get(entry.getKey());
+                    int total = assettotalMap.get(entry.getKey());
+                    double ans = ((double)(ones)/(double)(total))*100.0;
+                    
+                    resultMap.put("assetId",entry.getKey());
+                    resultMap.put("siteId",assetSiteIdMap.get(entry.getKey()));
+                    resultMap.put("aggValue",Double.toString(ans));
+                    resultMap.put("tagName","RecoveryRate");
+                    
+                    //resultMap.put("tagCounts",Integer.toString(entry.getValue().size()));
+                    resultMap.put("dateInString",Long.toString(startDate));
+                    resultMap.put("max_value","0");
+                    resultMap.put("min_value","0");
+                    
+                    resultListMap.add(resultMap);
+                }
+                
+                System.out.println("Re:" + resultListMap);
+                
+                new InsertTenMinuteAggregate().insertDailyAggregate(resultListMap);
+                
+                System.out.println("Inserting Successfully");
+                
+                return "success";
+
+            } catch (Exception e) {
+                e.printStackTrace();
+                return null;
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+            return null;
+        }
+    }
+    public String lossOfProductionKPI(String startDateInString, String endDateInString) {
+        try {
+            
+            ArrayList<HashMap<String,String>> resultList=new ArrayList<>();
+            startDateInString=startDateInString.replace("T", " ");
+            endDateInString=endDateInString.replace("T", " ");
+            
+            ArrayList<HashMap<String,String>> potentialProductionList=new ArrayList<>();
+            potentialProductionList=new DBUtils().fetchTenMinuteAggregates(startDateInString,endDateInString,"PotentialProduction");
+            
+            ArrayList<HashMap<String,String>> potentialProductionWhenAvailableList=new ArrayList<>();
+            potentialProductionWhenAvailableList=new DBUtils().fetchTenMinuteAggregates(startDateInString,endDateInString,"PotentialProductionWhenAvailable");
+            
+            for(HashMap<String,String> potentialMap: potentialProductionList)
+            {
+                for(HashMap<String,String> potentialAvailableMap: potentialProductionWhenAvailableList){
+                    if(potentialAvailableMap.get("assetId").equalsIgnoreCase(potentialMap.get("assetId"))){
+                        if(potentialAvailableMap.get("startDate").equalsIgnoreCase(potentialMap.get("startDate")) &&
+                                potentialAvailableMap.get("endDate").equalsIgnoreCase(potentialMap.get("endDate"))){
+                            double productionLoss=Double.parseDouble(potentialMap.get("potentialMap")) -
+                                Double.parseDouble(potentialAvailableMap.get("avgValue"));
+                            HashMap<String,String> resultMap=new HashMap<String,String>();
+                            resultMap.put("averageValue",Double.toString(productionLoss));
+                            resultMap.put("assetId",potentialMap.get("assetId"));
+                            resultMap.put("siteId",potentialMap.get("siteId"));
+                            resultMap.put("startDateTime",potentialMap.get("startDate"));
+                            resultMap.put("endDateTime",potentialMap.get("endDate"));
+                            resultMap.put("tagName",potentialMap.get("tagName"));
+                            resultMap.put("max","0");
+                            resultMap.put("min","0");
+                            
+                            resultList.add(resultMap);
+                        }
+                    }
+                }
+            }
+            new InsertTenMinuteAggregate().insertTenMinuteAggregate(resultList);
+
+            return null;
+        }
+        catch(Exception e){
+            e.printStackTrace();
+            return null;
+        }
+    }
+    public String underOverPerformanceKPI(String startDateInString, String endDateInString) {
+        try {
+            
+            ArrayList<HashMap<String,String>> resultList=new ArrayList<>();
+            startDateInString=startDateInString.replace("T", " ");
+            endDateInString=endDateInString.replace("T", " ");
+            
+            ArrayList<HashMap<String,String>> potentialProductionList=new ArrayList<>();
+            potentialProductionList=new DBUtils().fetchTenMinuteAggregates(startDateInString,endDateInString,"PotentialProduction");
+            
+            ArrayList<HashMap<String,String>> actualProductionList=new ArrayList<>();
+            actualProductionList=new DBUtils().fetchTenMinuteAggregates(startDateInString,endDateInString,"ActivePower");
+            
+            for(HashMap<String,String> potentialMap: potentialProductionList)
+            {
+                for(HashMap<String,String> actualProductionMap: actualProductionList){
+                    if(actualProductionMap.get("assetId").equalsIgnoreCase(potentialMap.get("assetId"))){
+                        if(actualProductionMap.get("startDate").equalsIgnoreCase(potentialMap.get("startDate")) &&
+                                actualProductionMap.get("endDate").equalsIgnoreCase(potentialMap.get("endDate"))){
+                            double productionLoss=Double.parseDouble(potentialMap.get("potentialMap")) -
+                                Double.parseDouble(actualProductionMap.get("avgValue"));
+                            HashMap<String,String> resultMap=new HashMap<>();
+                            resultMap.put("averageValue",Double.toString(productionLoss));
+                            resultMap.put("assetId",potentialMap.get("assetId"));
+                            resultMap.put("siteId",potentialMap.get("siteId"));
+                            resultMap.put("startDateTime",potentialMap.get("startDate"));
+                            resultMap.put("endDateTime",potentialMap.get("endDate"));
+                            resultMap.put("tagName",potentialMap.get("tagName"));
+                            resultMap.put("max","0");
+                            resultMap.put("min","0");
+                            
+                            resultList.add(resultMap);
+                        }
+                    }
+                }
+            }
+            new InsertTenMinuteAggregate().insertTenMinuteAggregate(resultList);
+
+            return null;
+        }
+        catch(Exception e){
+            e.printStackTrace();
+            return null;
+        }
+    }
 }
